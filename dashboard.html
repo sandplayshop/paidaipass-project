@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>學習儀表板 - AI 題庫練習</title>
+    <style>
+        :root {
+            --primary-bg: #f0f4f8;
+            --secondary-bg: #ffffff;
+            --text-color: #333;
+            --primary-color: #4a90e2;
+            --border-radius: 12px;
+            --box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+        }
+        body.dark {
+            --primary-bg: #1a202c;
+            --secondary-bg: #2d3748;
+            --text-color: #e2e8f0;
+            --primary-color: #63b3ed;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--primary-bg);
+            color: var(--text-color);
+            margin: 0;
+            padding: 1.5rem;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .container {
+            max-width: 900px;
+            margin: auto;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        header h1 {
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+        }
+        .chart-card, .stats-card {
+            background-color: var(--secondary-bg);
+            padding: 1.5rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+            transition: background-color 0.3s;
+        }
+        .chart-card h2, .stats-card h2 {
+            margin-top: 0;
+            color: var(--primary-color);
+            border-bottom: 2px solid #eee;
+            padding-bottom: 0.5rem;
+            margin-bottom: 1rem;
+            font-size: 1.25rem;
+        }
+        body.dark .chart-card h2, body.dark .stats-card h2 {
+            border-bottom-color: #4a5568;
+        }
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1.5rem;
+        }
+        .badge-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            min-height: 50px;
+        }
+        .badge {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 0.4rem 0.8rem;
+            border-radius: 15px;
+            font-size: 0.9rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        #heatmap {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            padding-top: 10px;
+        }
+        .heatmap-day {
+            width: 18px;
+            height: 18px;
+            border-radius: 3px;
+            background-color: #ebedf0;
+            border: 1px solid rgba(27, 31, 35, 0.06);
+        }
+        body.dark .heatmap-day {
+             background-color: #2d3748;
+             border: 1px solid #4a5568;
+        }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 1rem;
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: bold;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            background-color: var(--secondary-bg);
+            border-radius: var(--border-radius);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <a href="index.html" class="back-link">← 返回主頁</a>
+            <h1>我的學習儀表板</h1>
+        </header>
+
+        <div id="dashboard-content" class="dashboard-grid">
+            <div class="chart-card">
+                <h2>正確率趨勢</h2>
+                <canvas id="trendChart"></canvas>
+            </div>
+            <div class="chart-card">
+                <h2>分類能力分析</h2>
+                <canvas id="radarChart"></canvas>
+            </div>
+            <div class="stats-card">
+                <h2>練習熱力圖 (近90日)</h2>
+                <div id="heatmap"></div>
+            </div>
+            <div class="stats-card">
+                <h2>成就徽章</h2>
+                <div id="badge-container" class="badge-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const history = JSON.parse(localStorage.getItem('quizHistory') || '[]');
+            
+            // Apply theme from main page
+            const savedTheme = localStorage.getItem('aiQuizTheme');
+            if (savedTheme === 'dark') {
+                document.body.classList.add('dark');
+            }
+
+            if (history.length === 0) {
+                document.getElementById('dashboard-content').innerHTML = '<div class="empty-state"><p>尚無練習紀錄，快去挑戰看看吧！</p></div>';
+                return;
+            }
+
+            // 1. Trend Chart (Line)
+            const trendCtx = document.getElementById('trendChart').getContext('2d');
+            const trendLabels = history.map(h => h.date);
+            const trendData = history.map(h => h.total > 0 ? Math.round(h.correct / h.total * 100) : 0);
+            new Chart(trendCtx, {
+                type: 'line',
+                data: {
+                    labels: trendLabels,
+                    datasets: [{
+                        label: '正確率 (%)',
+                        data: trendData,
+                        borderColor: '#4a90e2',
+                        backgroundColor: 'rgba(74, 144, 226, 0.1)',
+                        fill: true,
+                        tension: 0.1
+                    }]
+                },
+                options: { scales: { y: { min: 0, max: 100 } } }
+            });
+
+            // 2. Radar Chart (Category Analysis)
+            const radarCtx = document.getElementById('radarChart').getContext('2d');
+            
+            // --- FIX START ---
+            const categoryStats = {};
+            history.forEach(session => {
+                for (const cat in session.byCategory) {
+                    if (!categoryStats[cat]) {
+                        // Initialize with all necessary properties
+                        categoryStats[cat] = { correct: 0, incorrect: 0, unanswered: 0, total: 0 };
+                    }
+                    // Accumulate all relevant stats
+                    const sessionCat = session.byCategory[cat];
+                    categoryStats[cat].correct += sessionCat.correct;
+                    categoryStats[cat].incorrect += sessionCat.incorrect;
+                    categoryStats[cat].unanswered += sessionCat.unanswered;
+                    categoryStats[cat].total += sessionCat.total;
+                }
+            });
+            // --- FIX END ---
+
+            const radarLabels = Object.keys(categoryStats);
+            const radarData = radarLabels.map(cat => {
+                const stats = categoryStats[cat];
+                const answered = stats.total - stats.unanswered;
+                return answered > 0 ? Math.round(stats.correct / answered * 100) : 0;
+            });
+            new Chart(radarCtx, {
+                type: 'radar',
+                data: {
+                    labels: radarLabels,
+                    datasets: [{
+                        label: '各分類平均正確率 (%)',
+                        data: radarData,
+                        backgroundColor: 'rgba(74, 144, 226, 0.2)',
+                        borderColor: '#4a90e2',
+                        pointBackgroundColor: '#4a90e2'
+                    }]
+                },
+                options: { scales: { r: { min: 0, max: 100, ticks: { backdropColor: 'transparent' } } } }
+            });
+
+            // 3. Heatmap
+            const heatmapContainer = document.getElementById('heatmap');
+            const dateCount = {};
+            history.forEach(h => {
+                dateCount[h.date] = (dateCount[h.date] || 0) + h.total;
+            });
+            let heatmapHtml = '';
+            const today = new Date();
+            for (let i = 89; i >= 0; i--) { // Show last 90 days for a better view
+                const date = new Date(today);
+                date.setDate(today.getDate() - i);
+                const dateString = date.toISOString().slice(0, 10);
+                const count = dateCount[dateString] || 0;
+                const opacity = Math.min(1, 0.1 + count / 20);
+                heatmapHtml += `<div class="heatmap-day" style="background-color: rgba(74, 144, 226, ${opacity})" title="${dateString}: ${count} 題"></div>`;
+            }
+            heatmapContainer.innerHTML = heatmapHtml;
+
+            // 4. Badges
+            const badgeContainer = document.getElementById('badge-container');
+            const badges = checkBadges(history, categoryStats);
+            if (badges.length > 0) {
+                badgeContainer.innerHTML = badges.map(b => `<span class="badge">${b.icon} ${b.name}</span>`).join('');
+            } else {
+                badgeContainer.innerHTML = '<p>繼續努力，解鎖更多成就！</p>';
+            }
+        });
+
+        function checkBadges(history, categoryStats) {
+            let badges = [];
+            
+            if (history.length > 0) badges.push({icon: '🚀', name: '學習啟航'});
+
+            const totalQuestions = history.reduce((sum, h) => sum + h.total, 0);
+            if (totalQuestions >= 500) badges.push({icon: '🏆', name: '題庫大師'});
+            else if (totalQuestions >= 100) badges.push({icon: '💪', name: '練習達人'});
+
+            if (history.some(h => h.correct === h.total && h.total > 0)) badges.push({icon: '💯', name: '完美表現'});
+
+            if (Object.values(categoryStats).some(c => {
+                const answered = c.total - c.unanswered;
+                return c.total >= 20 && answered > 0 && (c.correct / answered * 100) >= 95;
+            })) {
+                badges.push({icon: '🧠', name: '分類專家'});
+            }
+
+            const uniqueDays = new Set(history.map(h => h.date)).size;
+            if (uniqueDays >= 7) badges.push({icon: '🔥', name: '持之以恆'});
+
+            return badges;
+        }
+    </script>
+</body>
+</html>
